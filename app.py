@@ -4,7 +4,7 @@ import requests
 
 app = Flask(__name__)
 
-# 🔑 ညီလေး၏ Official Telegram Bot အချက်အလက်များ နေရာကွက်တိ ထည့်သွင်းပြီးပါပြီ
+# 🔑 ညီလေး၏ Official Telegram Bot အချက်အလက်များ
 TELEGRAM_BOT_TOKEN = "8818379142:AAGfhS5s8TWfoUJ40clinjbAsX_zBWxPwNU"
 TELEGRAM_CHAT_ID = "8505831943"
 
@@ -15,6 +15,14 @@ def send_telegram_alert(message):
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         print(f"❌ Telegram Alert Error: {e}")
+
+# 🌐 ၁။ ပင်မ Tools ဝက်ဘ်ဆိုက် (index.html) လမ်းကြောင်းကို ချိတ်ဆက်ပေးခြင်း
+@app.route("/")
+def home_index():
+    if os.path.exists("index.html"):
+        with open("index.html", "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>❌ Tools Website (index.html) ဖိုင်ရှာမတွေ့ပါ။</h1>"
 
 ADMIN_HTML = """
 <!DOCTYPE html>
@@ -79,15 +87,17 @@ ADMIN_HTML = """
 </html>
 """
 
+# 🔑 ၂။ Admin Panel လမ်းကြောင်း
 @app.route("/admin")
 def admin_panel():
     send_telegram_alert("⚠️ *SECURITY ALERT:* Admin Panel ထဲသို့ ဝင်ရောက်မှု ရှိခဲ့ပါသည်။")
     return render_template_string(ADMIN_HTML)
 
+# 🔑 ၃။ API လမ်းကြောင်း
 @app.route("/api/create-key", methods=["POST"])
 def create_key():
     send_telegram_alert("🔑 *LICENSE ALERT:* VIP Activation Key အသစ်တစ်ခု အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ။")
     return jsonify({"status": "SUCCESS"})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=10000)
