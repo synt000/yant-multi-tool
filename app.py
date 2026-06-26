@@ -16,7 +16,10 @@ DB_FILE = "enterprise_db.json"
 def load_db():
     if os.path.exists(DB_FILE):
         with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+            try:
+                return json.load(f)
+            except:
+                return {"users": {}, "keys": []}
     return {"users": {}, "keys": []}
 
 def save_db(data):
@@ -31,19 +34,16 @@ def send_telegram_alert(message):
     except Exception as e:
         print(f"❌ Telegram Alert Error: {e}")
 
-# 🌐 ၁။ ပင်မ Tools ဝက်ဘ်ဆိုက် (၃ ရက် Trial စစ်ဆေးပေးမည့် မာစတာစနစ်)
+# 🌐 ၁။ ပင်မ Tools ဝက်ဘ်ဆိုက် လမ်းကြောင်း (၃ ရက် Trial Auto-Lock)
 @app.route("/")
 def home_index():
     user_agent = request.headers.get('User-Agent', 'Unknown Device')
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    
-    # ရိုးရှင်းသော Device ID ဖန်တီးခြင်း (IP + Browser အမျိုးအစား)
     device_id = f"{user_ip}_{user_agent[:30]}".replace(".", "_").replace(" ", "_")
     
     db = load_db()
     now = datetime.now()
     
-    # User အသစ်ဖြစ်ပါက Database ထဲတွင် ၃ ရက် စတင် သတ်မှတ်ခြင်း
     if device_id not in db["users"]:
         expire_time = now + timedelta(days=3)
         db["users"][device_id] = {
@@ -54,13 +54,11 @@ def home_index():
             "status": "TRIAL"
         }
         save_db(db)
-        # Telegram သို့ User အသစ်ဝင်လာကြောင်း Live Alert ပို့ခြင်း
         send_telegram_alert(f"👤 *NEW USER ALERT:*\n📱 Device: `{user_agent[:30]}`\n🌐 IP: `{user_ip}`\n⏳ Trial End: `{expire_time.strftime('%Y-%m-%d')}`")
     
     user_info = db["users"][device_id]
     expire_date = datetime.strptime(user_info["expires_at"], "%Y-%m-%d %H:%M:%S")
     
-    # ❌ ၃ ရက်ပြည့်သွားပါက ဝက်ဘ်ဆိုက်အား အလိုအလျောက် ပိတ်ချခြင်း (Auto-Lock Screen)
     if now > expire_date and user_info["status"] != "VIP":
         return """
         <!DOCTYPE html>
@@ -69,28 +67,38 @@ def home_index():
             <title>❌ Trial Expired</title>
             <style>
                 body { background-color: #121212; color: #ff5252; font-family: Arial, sans-serif; text-align: center; padding-top: 100px; }
-                .lock-box { background-color: #1e1e1e; max-width: 500px; margin: 0 auto; padding: 40px; border-radius: 10px; border: 2px solid #ff5252; box-shadow: 0 0 20px rgba(255,82,82,0.2); }
-                h1 { margin-bottom: 20px; }
-                p { color: #ccc; font-size: 18px; line-height: 1.6; }
+                .lock-box { background-color: #1e1e1e; max-width: 500px; margin: 0 auto; padding: 40px; border-radius: 10px; border: 2px solid #ff5252; }
+                p { color: #ccc; font-size: 18px; }
                 .admin-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #ff5252; color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold; }
             </style>
         </head>
         <body>
             <div class="lock-box">
                 <h1>⚠️ Your 3-Day Trial Has Expired!</h1>
-                <p>ဤ Tools စနစ်အား ဆက်လက်အသုံးပြုနိုင်ရန်အတွက် တရားဝင် သက်တမ်းတိုး VIP Key လိုအပ်ပါသည်။</p>
-                <p>ကျေးဇူးပြု၍ Admin <b>@synt000</b> ထံသို့ ဆက်သွယ်ပြီး အကောင့်အား Activation ပြုလုပ်ပေးပါဗျာ။</p>
+                <p>ကျေးဇူးပြု၍ Admin <b>@synt000</b> ထံသို့ ဆက်သွယ်ပြီး VIP Key ဖြင့် Activation ပြုလုပ်ပေးပါဗျာ။</p>
                 <a class="admin-link" href="https://t.me" target="_blank">💬 Contact Admin via Telegram</a>
             </div>
         </body>
         </html>
         """
         
-    # ၃ ရက်မပြည့်သေးပါက ပင်မ Tools ဆိုက် (index.html) အား ပုံမှန်အတိုင်း ပွင့်ပေးခြင်း
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return f.read()
     return "<h1>❌ Tools Website (index.html) ဖိုင်ရှာမတွေ့ပါ။</h1>"
+
+# 🛠️ ၂။ ညီလေး ပြသနေသော 404 Error အား ဖြေရှင်းပေးမည့် Time Verification API
+@app.route("/api/verify-time", methods=["POST"])
+def verify_time():
+    user_agent = request.headers.get('User-Agent', 'Unknown Device')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    device_id = f"{user_ip}_{user_agent[:30]}".replace(".", "_").replace(" ", "_")
+    
+    db = load_db()
+    if device_id in db["users"]:
+        user_info = db["users"][device_id]
+        return jsonify({"status": "ACTIVE", "mode": user_info["status"], "expires_at": user_info["expires_at"]})
+    return jsonify({"status": "ACTIVE", "mode": "TRIAL", "message": "New Session Initialized"})
 
 ADMIN_HTML = """
 <!DOCTYPE html>
@@ -119,7 +127,7 @@ ADMIN_HTML = """
             <div>Admin: yannaingtun</div>
         </header>
         <div class="grid">
-            <div class="card" onclick="loadModule('Users Management', '👤 လက်ရှိအသုံးပြုသူ စာရင်းနှင့် ဒေတာများကို ဤနေရာတွင် ထိန်းချုပ်နိုင်ပါသည်။')"><h3>👥 Users Management</h3></div>
+            <div class="card" onclick="fetchUsers()"><h3>👥 Users Management</h3></div>
             <div class="card" onclick="loadModule('Security Settings', '🛡️ Firewall ပိတ်ဆို့မှုများနှင့် Zero Trust Rules များ သတ်မှတ်ရန် နေရာ။')"><h3>🛡️ Security Settings</h3></div>
             <div class="card" onclick="loadModule('Analytics', '📈 ဝက်ဘ်ဆိုက် Traffic စာရင်းများကို Live ဖော်ပြပေးနေပါသည်။')"><h3>📈 Analytics</h3></div>
             <div class="card" onclick="triggerKeyGen()"><h3>🔑 License Creator</h3></div>
@@ -128,7 +136,7 @@ ADMIN_HTML = """
         </div>
         <div id="contentBox" class="content-area">
             <h2 id="contentTitle" style="color: #4CAF50; margin-top:0;"></h2>
-            <p id="contentText"></p>
+            <div id="contentBody"></div>
         </div>
     </div>
     <div id="toastBox" class="toast"></div>
@@ -136,7 +144,7 @@ ADMIN_HTML = """
         function loadModule(title, text) {
             document.getElementById("contentBox").style.display = "block";
             document.getElementById("contentTitle").innerText = title;
-            document.getElementById("contentText").innerText = text;
+            document.getElementById("contentBody").innerHTML = "<p>" + text + "</p>";
             showToast("🔄 Loaded: " + title);
         }
         function showToast(msg) {
@@ -150,18 +158,41 @@ ADMIN_HTML = """
                 .then(res => res.json())
                 .then(data => showToast("✅ Key Created & Bot Alert Sent!"));
         }
+        function fetchUsers() {
+            showToast("👥 Fetching Users List...");
+            fetch('/api/get-users')
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("contentBox").style.display = "block";
+                    document.getElementById("contentTitle").innerText = "Users Management";
+                    let html = "<table style='width:100%; border-collapse: collapse; margin-top:10px;'>";
+                    html += "<tr style='background:#333;'><th style='padding:8px;'>IP</th><th style='padding:8px;'>Registered</th><th style='padding:8px;'>Status</th></tr>";
+                    for(let id in data) {
+                        let u = data[id];
+                        html += `<tr style='border-bottom:1px solid #333;'><td style='padding:8px; text-align:center;'>${u.ip}</td><td style='padding:8px; text-align:center;'>${u.registered_at}</td><td style='padding:8px; text-align:center; color:#4CAF50;'>${u.status}</td></tr>`;
+                    }
+                    html += "</table>";
+                    document.getElementById("contentBody").innerHTML = html;
+                });
+        }
     </script>
 </body>
 </html>
 """
 
-# 🔑 ၂။ Admin Panel လမ်းကြောင်း
+# 🔑 ၃။ Admin Panel ลမ်းကြောင်း
 @app.route("/admin")
 def admin_panel():
     send_telegram_alert("⚠️ *SECURITY ALERT:* Admin Panel ထဲသို့ ဝင်ရောက်မှု ရှိခဲ့ပါသည်။")
     return render_template_string(ADMIN_HTML)
 
-# 🔑 ၃။ API လမ်းကြောင်း
+# 🔑 ၄။ Live Database မှ User စာရင်းများ ဆွဲထုတ်ပေးမည့် API
+@app.route("/api/get-users")
+def get_users():
+    db = load_db()
+    return jsonify(db["users"])
+
+# 🔑 ၅။ License Generator API
 @app.route("/api/create-key", methods=["POST"])
 def create_key():
     send_telegram_alert("🔑 *LICENSE ALERT:* VIP Activation Key အသစ်တစ်ခု အောင်မြင်စွာ ထုတ်ယူပြီးပါပြီ။")
