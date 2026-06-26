@@ -1,12 +1,27 @@
 from flask import Flask, jsonify, request, render_template_string
 import os
 import requests
+from datetime import datetime, timedelta
+import json
 
 app = Flask(__name__)
 
 # 🔑 ညီလေး၏ Official Telegram Bot အချက်အလက်များ
 TELEGRAM_BOT_TOKEN = "8818379142:AAGfhS5s8TWfoUJ40clinjbAsX_zBWxPwNU"
 TELEGRAM_CHAT_ID = "8505831943"
+
+# 💾 စက်တွင်း Database ဖိုင် သတ်မှတ်ခြင်း
+DB_FILE = "enterprise_db.json"
+
+def load_db():
+    if os.path.exists(DB_FILE):
+        with open(DB_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {"users": {}, "keys": []}
+
+def save_db(data):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
 
 def send_telegram_alert(message):
     try:
@@ -16,9 +31,62 @@ def send_telegram_alert(message):
     except Exception as e:
         print(f"❌ Telegram Alert Error: {e}")
 
-# 🌐 ၁။ ပင်မ Tools ဝက်ဘ်ဆိုက် (index.html) လမ်းကြောင်းကို ချိတ်ဆက်ပေးခြင်း
+# 🌐 ၁။ ပင်မ Tools ဝက်ဘ်ဆိုက် (၃ ရက် Trial စစ်ဆေးပေးမည့် မာစတာစနစ်)
 @app.route("/")
 def home_index():
+    user_agent = request.headers.get('User-Agent', 'Unknown Device')
+    user_ip = request.headers.get('X-Forwarded-For', request.remote_addr)
+    
+    # ရိုးရှင်းသော Device ID ဖန်တီးခြင်း (IP + Browser အမျိုးအစား)
+    device_id = f"{user_ip}_{user_agent[:30]}".replace(".", "_").replace(" ", "_")
+    
+    db = load_db()
+    now = datetime.now()
+    
+    # User အသစ်ဖြစ်ပါက Database ထဲတွင် ၃ ရက် စတင် သတ်မှတ်ခြင်း
+    if device_id not in db["users"]:
+        expire_time = now + timedelta(days=3)
+        db["users"][device_id] = {
+            "ip": user_ip,
+            "device": user_agent[:50],
+            "registered_at": now.strftime("%Y-%m-%d %H:%M:%S"),
+            "expires_at": expire_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "TRIAL"
+        }
+        save_db(db)
+        # Telegram သို့ User အသစ်ဝင်လာကြောင်း Live Alert ပို့ခြင်း
+        send_telegram_alert(f"👤 *NEW USER ALERT:*\n📱 Device: `{user_agent[:30]}`\n🌐 IP: `{user_ip}`\n⏳ Trial End: `{expire_time.strftime('%Y-%m-%d')}`")
+    
+    user_info = db["users"][device_id]
+    expire_date = datetime.strptime(user_info["expires_at"], "%Y-%m-%d %H:%M:%S")
+    
+    # ❌ ၃ ရက်ပြည့်သွားပါက ဝက်ဘ်ဆိုက်အား အလိုအလျောက် ပိတ်ချခြင်း (Auto-Lock Screen)
+    if now > expire_date and user_info["status"] != "VIP":
+        return """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>❌ Trial Expired</title>
+            <style>
+                body { background-color: #121212; color: #ff5252; font-family: Arial, sans-serif; text-align: center; padding-top: 100px; }
+                .lock-box { background-color: #1e1e1e; max-width: 500px; margin: 0 auto; padding: 40px; border-radius: 10px; border: 2px solid #ff5252; box-shadow: 0 0 20px rgba(255,82,82,0.2); }
+                h1 { margin-bottom: 20px; }
+                p { color: #ccc; font-size: 18px; line-height: 1.6; }
+                .admin-link { display: inline-block; margin-top: 20px; padding: 10px 20px; background-color: #ff5252; color: #fff; text-decoration: none; border-radius: 5px; font-weight: bold; }
+            </style>
+        </head>
+        <body>
+            <div class="lock-box">
+                <h1>⚠️ Your 3-Day Trial Has Expired!</h1>
+                <p>ဤ Tools စနစ်အား ဆက်လက်အသုံးပြုနိုင်ရန်အတွက် တရားဝင် သက်တမ်းတိုး VIP Key လိုအပ်ပါသည်။</p>
+                <p>ကျေးဇူးပြု၍ Admin <b>@synt000</b> ထံသို့ ဆက်သွယ်ပြီး အကောင့်အား Activation ပြုလုပ်ပေးပါဗျာ။</p>
+                <a class="admin-link" href="https://t.me" target="_blank">💬 Contact Admin via Telegram</a>
+            </div>
+        </body>
+        </html>
+        """
+        
+    # ၃ ရက်မပြည့်သေးပါက ပင်မ Tools ဆိုက် (index.html) အား ပုံမှန်အတိုင်း ပွင့်ပေးခြင်း
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return f.read()
